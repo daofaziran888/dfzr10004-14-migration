@@ -17,10 +17,42 @@
 ├── backend/                  FastAPI（Python） 后端
 │   ├── app/routers/          每个业务模块一组接口
 │   ├── app/services/         业务规则与状态流转
-│   └── app/store.py          内存数据仓库与示例数据
+│   ├── app/persistence/      追加式事件日志、审计仓储与旧数据迁移
+│   ├── app/store.py          内存数据仓库与示例数据（审计表由持久化仓储同步）
+│   ├── tests/                持久化与迁移单元测试
+│   └── examples/             旧数据库导出的迁移示例数据
+├── scripts/                  上线迁移（migrate.sh）与回退（rollback.sh）脚本
+├── .github/workflows/        流水线：先构建测试，通过后才切换
 ├── .gitignore
-└── docker-compose.yml
+└── docker-compose.yml        backend 挂载 audit-data 命名卷支持重启恢复
 ```
+
+## 审计记录持久化与迁移
+
+采集审计日志已从进程内存迁移为**追加式事件日志**（JSON Lines，仅标准库实现）：
+
+- 数据目录由 `AUDIT_DATA_DIR` 指定（本地默认 `backend/data`，容器内 `/srv/data/audit`），
+  包含 `audit-events.jsonl`（事件日志）、`migration-state.json`（检查点）、
+  `legacy-snapshot.json`（旧数据快照）。
+- 每条写入立即 `flush + fsync`，服务重启后回放事件即可恢复；同一记录编号的
+  重放事件带稳定幂等键，不会长出副本，事件按 `seq` 稳定排序。
+- **首写为准**：运行期新写入与迁移并行撞编号时，以首次成功写入的记录为准，
+  旧值差异只生成新的 `audit.amended` 追加事件，不改写历史。
+- 迁移失败会保留原数据并在检查点记录失败区间（记录编号 + 下标范围），
+  恢复后重跑迁移命令即从该区间继续。
+- 复核/归档结论会回写到配置版本清单（待核对项 + 审计回写视图），
+  旧的已复核、已归档标记随事件持久化，重启不蒸发。
+
+常用命令：
+
+```bash
+make test                       # 后端单元测试（含迁移幂等、失败续跑、版本联动）
+make migrate                    # 执行/续跑迁移
+LEGACY_EXPORT=backend/examples/legacy-audit-export.json make migrate
+make rollback                   # 回退：保留快照与事件日志，另存时间戳备份
+python -m app.persistence.cli status   # 查看迁移状态与失败区间
+```
+
 
 ## 启动
 

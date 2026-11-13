@@ -5,9 +5,17 @@ services:
       - "8000:8000"
     environment:
       - APP_ENV=local
+      # 审计追加式事件日志、迁移检查点与旧数据快照目录，指向挂载卷以支持重启恢复
+      - AUDIT_DATA_DIR=/srv/data/audit
+    volumes:
+      - audit-data:/srv/data/audit
   frontend:
     build: ./frontend
     ports:
       - "5173:5173"
     depends_on:
       - backend
+
+volumes:
+  # 命名卷：容器重建/升级后审计事件日志与迁移状态仍在，回退时原环境记录可读
+  audit-data:

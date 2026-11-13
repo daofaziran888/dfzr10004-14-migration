@@ -30,6 +30,22 @@ def list_entries(
     return PageResult(items=items, total=total, page=page, size=size)
 
 
+# 静态路径必须声明在 /{entry_id} 之前，否则会被动态路由截获
+@router.get("/check-items")
+def check_items(
+    version_no: str | None = Query(default=None, description="按版本编号过滤待核对项"),
+) -> dict[str, Any]:
+    """配置版本清单的待核对项与审计回写视图：复核结论、归档标记均可回看。"""
+    return service.check_items(version_no)
+
+
+@router.get("/export")
+def export_entries() -> dict[str, Any]:
+    """导出采集配置版本清单：返回当前过滤条件下的全量数据。"""
+    items, total = service.list_entries(page=1, size=10000)
+    return {"module": "version", "total": total, "items": items}
+
+
 @router.get("/{entry_id}", response_model=dict)
 def get_entry(entry_id: int) -> dict:
     """读取单条配置版本明细；不存在时给出可读的错误说明。"""
@@ -56,10 +72,3 @@ def run_action(entry_id: int, payload: EntryPayload) -> ActionResult:
     if entry is None:
         return ActionResult(ok=False, message=message)
     return ActionResult(ok=True, message=message, entry=entry)
-
-
-@router.get("/export")
-def export_entries() -> dict[str, Any]:
-    """导出采集配置版本清单：返回当前过滤条件下的全量数据。"""
-    items, total = service.list_entries(page=1, size=10000)
-    return {"module": "version", "total": total, "items": items}

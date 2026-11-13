@@ -1,8 +1,13 @@
-"""采集配置版本业务规则：状态流转、字段校验与筛选口径都收在这里。"""
+"""采集配置版本业务规则：状态流转、字段校验与筛选口径都收在这里。
+
+审计侧的复核/归档事件会回写到本模块：每条配置版本附带「待核对数量」与
+「审计回写」流水，旧的已复核、已归档标记随事件日志持久化，重启不蒸发。
+"""
 from __future__ import annotations
 
 from typing import Any
 
+from app.persistence.bootstrap import get_audit_repository
 from app.store import store
 
 MODULE = "version"
@@ -13,6 +18,16 @@ NEGATIVE_ACTIONS = ["回滚版本"]
 
 
 class VersionService:
+    def __init__(self) -> None:
+        # 审计仓储为惰性单例；未初始化的测试场景下访问才触发引导
+        self._audit_repo = None
+
+    @property
+    def audit_repo(self):
+        if self._audit_repo is None:
+            self._audit_repo = get_audit_repository()
+        return self._audit_repo
+
     def list_entries(
         self,
         *,
@@ -43,6 +58,8 @@ class VersionService:
         entry["status"] = STATUS_ORDER[0]
         entry["pending"] = True
         entry["abnormal"] = False
+        entry["待核对数量"] = 0
+        entry["审计回写"] = []
         rows.append(entry)
         return entry, []
 
@@ -59,3 +76,7 @@ class VersionService:
         entry["pending"] = target != STATUS_ORDER[-1]
         entry["abnormal"] = action in NEGATIVE_ACTIONS
         return entry, f"配置版本已{action}"
+
+    def check_items(self, version_no: str | None = None) -> dict[str, Any]:
+        """配置版本清单的待核对项与审计回写视图（来自审计事件日志折叠）。"""
+        return self.audit_repo.version_check_items(version_no)

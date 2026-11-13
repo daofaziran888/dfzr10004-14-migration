@@ -5,14 +5,29 @@
 """
 from __future__ import annotations
 
+import logging
+from contextlib import asynccontextmanager
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.config import settings
+from app.persistence import bootstrap
 from app.routers import ROUTERS
 from app.store import store
 
-app = FastAPI(title="智能采集质量管控平台", version="1.0.0")
+logger = logging.getLogger("uvicorn.error")
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # 构建与依赖安装完成后才执行迁移；失败不阻断启动，状态可经接口查询
+    status = bootstrap.bootstrap()
+    logger.info("审计记录持久化迁移状态：%s", status)
+    yield
+
+
+app = FastAPI(title=settings.app_name, version="1.1.0", lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,

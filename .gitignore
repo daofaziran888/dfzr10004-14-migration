@@ -85,3 +85,7 @@ desktop.ini
 *.db
 *.pid
 *.seed
+
+# 审计追加式事件日志、迁移检查点与旧数据快照（运行期生成，不入库）
+data/
+backend/data/
